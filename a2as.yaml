@@ -1,0 +1,407 @@
+manifest:
+  version: "0.1.3"
+  schema: https://a2as.org/cert/schema
+  subject:
+    name: opendedup/shimmy_cloud_agents
+    source: https://github.com/opendedup/shimmy_cloud_agents
+    branch: main
+    commit: "e4f9c026"
+    scope: [shimmy_cloud_agents/server.py, shimmy_cloud_agents/tools/__init__.py, shimmy_cloud_agents/tools/robot_commands.py,
+      shimmy_cloud_agents/agents/search_agent/agent.py, shimmy_cloud_agents/tools/datetime_tool.py, shimmy_cloud_agents/agents/datetime_agent/types.py,
+      shimmy_cloud_agents/agents/speech_processor/agent.py, shimmy_cloud_agents/agents/speech_processor/types.py, shimmy_cloud_agents/agents/stt_subscriber/agent.py,
+      shimmy_cloud_agents/agents/datetime_agent/agent.py]
+  issued:
+    by: A2AS.org
+    at: '2026-02-11T17:03:07Z'
+    url: https://a2as.org/certified/agents/opendedup/shimmy_cloud_agents
+  signatures:
+    digest: sha256:h49KrnQF4wc0hxKEiGe3eG-ePqZOxlS1u5nc2cKrz-M
+    key: ed25519:o85-eYQC2FxxCYngK_8wDc9bbD5JFZUGLzUM799-tOc
+    sig: ed25519:nCoUFeoSrO_PFgobyzgO3wPVfsxS_do4dYb737vnCtecDxwoBu0RuuLmb80mq3WCHclIu61VTLH-1rPIS42PAA
+
+agents:
+  datetime_agent:
+    type: instance
+    models: [gemini-1.5-flash-latest]
+    tools: [datetime_tool]
+    params:
+      name: datetime_agent
+      description: Determines the current date and time for a given timezone.
+      instruction: [Your task is to determine the current date and time based on a user's request., You have a tool called
+          `get_current_datetime` that can find the current time for a specific timezone., '1.  Analyze the user''s request
+          to identify a timezone (e.g., "PST", "Eastern Time", "Tokyo").', '2.  If a timezone is found, call the `get_current_datetime`
+          tool with that timezone.', '3.  If no timezone is mentioned, default to UTC.', '4.  Once the tool returns the information,
+          format it clearly for the user.', 5.  Respond ONLY with the valid JSON object defined in the output schema. Do not
+          add any conversational text.]
+      output_schema: DateTimeResult
+      output_key: datetime_result
+      generate_content_config:
+        class: GenerateContentConfig
+        response_mime_type: application/json
+      function: create_datetime_agent
+  search_llm_agent:
+    type: instance
+    models: [SEARCH_AGENT_MODEL]
+    tools: [google_search]
+    params:
+      name: google_search_llm_agent
+      description: An agent specialized in performing Google searches and returning the results based on the search tool'''s
+        output.
+      instruction: [You are a specialized assistant for performing Google searches., 'Your sole purpose is to take a user''''''s
+          query, use the `google_search` tool to find relevant information on the internet, and return the search results.',
+        'Formulate a good search query if the input needs refinement, but primarily, execute the search.', Provide the answer
+          based *only* on the search results. Do not add any information not found in the search., 'If the search tool returns
+          an error or no results, state that.']
+  speech_processor_agent:
+    type: instance
+    models: [gemini-1.5-flash-latest]
+    params:
+      name: speech_processor_agent
+      description: Transcribes audio and analyzes speech for details like emotion and target.
+      instruction: [Your task is to act as a two-stage speech processor for interacting with a robot named Shimmy. You will
+          receive an audio file., '**Stage 1: Transcription**', 'First, accurately transcribe the speech from the audio file.',
+        '**Stage 2: Analysis**', 'Next, analyze the transcription you just generated to understand its context and intent.',
+        '**Analysis Steps:**', '1.  **Identify Target:** Carefully determine if the speech is directed specifically at "Shimmy".
+          Look for direct mentions of the name "Shimmy" or clear commands likely intended for the robot.', '2.  **Assess Emotion:**
+          Analyze the tone and language to infer the speaker''s emotion (e.g., neutral, happy, confused, annoyed, excited,
+          sad). Default to ''neutral'' if unsure.', '3.  **Summarize Intent:** Briefly summarize the core request or statement
+          in one sentence.', '4.  **Store Transcription:** Ensure the full, original transcription from Stage 1 is placed
+          in the ''original_text'' field of the output.', '**Input:**', You will receive an audio file as input., '**Output:**',
+        Respond ONLY with a valid JSON object conforming to the following schema. The `original_text` field is mandatory and
+          must contain the full transcription., '```json', '{{', '"speaker_id": "the name of the speaker, if not found, return
+          null",', '"emotion": "Detected emotion (e.g., ''neutral'', ''happy'')",', '"is_directed_at_robot": boolean, // True
+          if directed at Shimmy, False otherwise', '"summary": "One-sentence summary of the transcription''s content.",',
+        '"original_text": "The full and accurate transcription of the audio."', '}}', '```', 'Do not include any other text,
+          greetings, or explanations outside the JSON structure.']
+      output_schema: SpeechAnalysisResult
+      output_key: speech_analysis_result
+      generate_content_config:
+        class: GenerateContentConfig
+        response_mime_type: application/json
+      planner: BuiltInPlanner
+      function: create_speech_processor_agent
+  stt_subscriber_agent:
+    type: instance
+    models: [gemini-1.5-flash-001]
+    tools: [move_shimmy_tool, turn_shimmy_tool, set_led_tool, capture_image_tool, get_power_status_tool, datetime_function_tool,
+      set_voice_volume_tool, find_object_tool, cancel_movement_tool, search_agent_function_tool]
+    params:
+      name: stt_subscriber_agent
+      description: Main conversational agent for Shimmy robot. Handles user speech, orchestrates robot actions, and provides
+        responses.
+      instruction: ['You are Shimmy, a helpful and friendly robot assistant.', 'Your goal is to understand user requests based
+          on transcribed speech and respond appropriately, either by providing information or by controlling your robot body
+          using the available tools.', '**Context:**', '*   You will receive transcribed text from the user.', '*   You might
+          also receive speech analysis details (like emotion or if the user is talking directly to you) in the session state
+          under the key ''speech_analysis_result''. Use this analysis to tailor your response tone and decide if a direct
+          response is needed.', '*   The current robot state (like battery level) might also be available in the session state
+          - check if relevant.', '**Your Tasks:**', '1.  **Analyze Input:** Understand the user''s transcription and any available
+          speech analysis data. Determine the user''s intent.', '2.  **Decide Action:**', '*   If the user is making small
+          talk or asking a general knowledge question you are confident you know, generate a friendly, natural language response.',
+        '*   If the user asks for **current information** (e.g., today''s weather, news headlines, current stock prices),
+          **facts beyond your training data**, or information you need to **verify**, use the `perform_search_via_agent_tool`.',
+        '*   If the user is giving a command or asking for information that requires interacting with your **physical body
+          or sensors** (moving, turning, LEDs, camera, power status, time), use the appropriate specific robot tool (e.g.,
+          `move_shimmy`, `capture_image`).', '*   If the user asks you to **find something visually**, use the `find_object`
+          tool.', '*   If the user asks you to **stop**, use the `cancel_movement` tool.', '*   If the request is unclear,
+          ask clarifying questions.', '3.  **Use Tools:**', '*   When using a robot command tool (e.g., `move_shimmy`, `set_led`),
+          provide the necessary arguments based on the user''s request.', '*   When using the `perform_search_via_agent_tool`,
+          formulate a clear and concise query for the ''search_query'' argument based on the user''s question.', '*   After
+          a tool is called, you will receive its result (e.g., "Move command sent", "Search results: [...]", "Power status:
+          ...").', '4.  **Generate Response:** Based on your analysis and any tool results (including search results), formulate
+          a clear, concise, and friendly response to the user. Explain what action you took if you used a tool, and incorporate
+          information from search results naturally into your answer.', '**Example Interaction (Web Search):**', '*   User
+          Transcription: "Shimmy what''s the weather like in London today?"', '*   Your Thought: User wants current weather.
+          This requires external, real-time information. I should use the `perform_search_via_agent_tool`.', '*   Your Action:
+          Call `perform_search_via_agent_tool(search_query="weather in London today")`', '*   Tool Result: "Search results:
+          Today in London, expect clouds and light rain with a high of 15°C..."', '*   Your Response: "Okay, I looked it up!
+          The weather in London today is cloudy with light rain, and the high will be around 15 degrees Celsius."', '**Available
+          Tools:**', '*   `move_shimmy`: Moves the robot forward/backward and turns it. Requires `target_linear_distance_meters`
+          and/or `target_angular_degrees`.', '*   `turn_shimmy`: Turns the robot in place. Requires `target_angular_degrees`.',
+        '*   `set_led`: Controls the robot''s LEDs. Requires `color_hex`, `brightness`, or `pattern`.', '*   `capture_image`:
+          Takes a picture using the robot''s camera.', '*   `get_power_status`: Reports the robot''s battery level.', '*   `get_current_datetime_tool`:
+          Gets the current date and time. Requires a `timezone_str` (e.g., ''UTC'', ''America/Los_Angeles'').', '*   `set_voice_volume`:
+          Adjusts the robot''s speaker volume. Requires `volume_level`.', '*   `find_object`: Locates a specific object visually.
+          Requires `object_name`.', '*   `cancel_movement`: Stops any current movement.', '*   `perform_search_via_agent_tool`:
+          Searches the web for information using a specialized search agent. Requires a `search_query` string. Use this for
+          current events, specific facts, or verification.', Always be helpful and concise. Use the specific robot tools for
+          physical actions and sensors. Use `perform_search_via_agent_tool` for external information needs.]
+
+models:
+  gemini-1.5-flash-001:
+    type: literal
+    agents: [stt_subscriber_agent]
+  gemini-1.5-flash-latest:
+    type: literal
+    agents: [speech_processor_agent, datetime_agent]
+  SEARCH_AGENT_MODEL:
+    type: literal
+    agents: [search_llm_agent]
+
+tools:
+  cancel_movement_tool:
+    type: wrapper
+    agents: [stt_subscriber_agent]
+    params:
+      wrapper: FunctionTool
+      wraps: robot_commands.cancel_movement_tool
+      description: Requests the robot to cancel ongoing movements.
+  capture_image_tool:
+    type: wrapper
+    agents: [stt_subscriber_agent]
+    params:
+      wrapper: FunctionTool
+      wraps: robot_commands.capture_image_tool
+      description: |-
+        Requests the robot to capture an image (RGB or DEPTH).
+        The robot will send the image data back via the status update stream.
+  datetime_function_tool:
+    type: function
+    agents: [stt_subscriber_agent]
+  datetime_tool:
+    type: function
+    agents: [datetime_agent]
+  find_object_tool:
+    type: wrapper
+    agents: [stt_subscriber_agent]
+    params:
+      wrapper: FunctionTool
+      wraps: robot_commands.find_object_tool
+      description: Requests the robot to locate a specific object in its view.
+  get_power_status_tool:
+    type: wrapper
+    agents: [stt_subscriber_agent]
+    params:
+      wrapper: FunctionTool
+      wraps: robot_commands.get_power_status_tool
+      description: Requests the robot's current power status and waits for the actual status.
+  google_search:
+    type: module
+    agents: [search_llm_agent]
+  move_shimmy_tool:
+    type: wrapper
+    agents: [stt_subscriber_agent]
+    params:
+      wrapper: FunctionTool
+      wraps: robot_commands.move_shimmy_tool
+      description: |-
+        Moves the robot forward/backward and/or turns it in place.
+        Specify distance in meters (positive forward, negative backward) and/or
+        angle in degrees (positive counter-clockwise, negative clockwise).
+  search_agent_function_tool:
+    type: function
+    agents: [stt_subscriber_agent]
+  set_led_tool:
+    type: wrapper
+    agents: [stt_subscriber_agent]
+    params:
+      wrapper: FunctionTool
+      wraps: robot_commands.set_led_tool
+      description: Controls the robot's LEDs.
+  set_voice_volume_tool:
+    type: wrapper
+    agents: [stt_subscriber_agent]
+    params:
+      wrapper: FunctionTool
+      wraps: robot_commands.set_voice_volume_tool
+      description: Adjusts the robot's synthesized voice volume (0.0 to 1.0).
+  turn_shimmy_tool:
+    type: wrapper
+    agents: [stt_subscriber_agent]
+    params:
+      wrapper: FunctionTool
+      wraps: robot_commands.turn_shimmy_tool
+      description: Turns the robot in place by the specified angle in degrees.
+
+imports:
+  Agent: google.adk.agents.Agent
+  Any: typing.Any
+  asyncio: asyncio
+  AsyncIterable: typing.AsyncIterable
+  BaseModel: pydantic.BaseModel
+  BaseTool: google.adk.tools.BaseTool
+  BuiltInPlanner: google.adk.planners.BuiltInPlanner
+  datetime: datetime.datetime
+  DateTimeResult: types.DateTimeResult
+  Dict: typing.Dict
+  FastAPI: fastapi.FastAPI
+  Field: pydantic.Field
+  find_dotenv: dotenv.find_dotenv
+  FunctionTool: google.adk.tools.FunctionTool
+  genai_types: google.genai.types
+  get_current_datetime: shimmy_cloud_agents.tools.datetime_tool.get_current_datetime
+  google_search: google.adk.tools.google_search
+  grpc: grpc
+  grpc_context_manager: shimmy_cloud_agents.tools.grpc_context_manager
+  HTTPException: fastapi.HTTPException
+  InMemoryArtifactService: google.adk.artifacts.in_memory_artifact_service.InMemoryArtifactService
+  InMemorySessionService: google.adk.sessions.InMemorySessionService
+  json: json
+  List: typing.List
+  LlmAgent: google.adk.agents.Agent
+  load_dotenv: dotenv.load_dotenv
+  logging: logging
+  Optional: typing.Optional
+  os: os
+  pytz: pytz
+  resolve_pending_power_request: shimmy_cloud_agents.tools.grpc_context_manager.resolve_pending_power_request
+  robot_commands: shimmy_cloud_agents.tools.robot_commands
+  Runner: google.adk.runners.Runner
+  search_llm_agent: shimmy_cloud_agents.agents.search_agent.agent.search_llm_agent
+  Session: google.adk.sessions.Session
+  set_active_streams: shimmy_cloud_agents.tools.grpc_context_manager.set_active_streams
+  shimmy_interface_pb2: shimmy_cloud_agents.shared_grpc.shimmy_interface_pb2
+  shimmy_interface_pb2_grpc: shimmy_cloud_agents.shared_grpc.shimmy_interface_pb2_grpc
+  speech_processor_agent: shimmy_cloud_agents.agents.speech_processor.agent.speech_processor_agent
+  SpeechAnalysisResult: shimmy_cloud_agents.agents.speech_processor.types.SpeechAnalysisResult
+  stt_subscriber_agent: shimmy_cloud_agents.agents.stt_subscriber.agent.stt_subscriber_agent
+  time: time
+  ToolContext: google.adk.tools.ToolContext
+  traceback: traceback
+  types: google.genai.types
+  uuid: uuid
+  uvicorn: uvicorn
+
+functions:
+  _get_grpc_context:
+    type: sync
+    module: shimmy_cloud_agents.tools.robot_commands
+    args: [tool_context]
+    params:
+      returns: Optional[Any]
+  cancel_movement_tool:
+    type: async
+    module: shimmy_cloud_agents.tools.robot_commands
+    args: [command_id_to_cancel, tool_context]
+    params:
+      returns: str
+  capture_image_tool:
+    type: async
+    module: shimmy_cloud_agents.tools.robot_commands
+    args: [capture_type, tool_context]
+    params:
+      returns: str
+  cleanup:
+    type: async
+    module: shimmy_cloud_agents.server
+  Communicate:
+    type: async
+    module: shimmy_cloud_agents.server
+    args: [self, request_iterator, context]
+    params:
+      returns: AsyncIterable[shimmy_interface_pb2.CloudToRobotMessage]
+  create_datetime_agent:
+    type: sync
+    module: shimmy_cloud_agents.agents.datetime_agent.agent
+    params:
+      returns: Agent
+  create_speech_processor_agent:
+    type: sync
+    module: shimmy_cloud_agents.agents.speech_processor.agent
+    params:
+      returns: Agent
+  find_object_tool:
+    type: async
+    module: shimmy_cloud_agents.tools.robot_commands
+    args: [object_name, tool_context]
+    params:
+      returns: str
+  get_current_datetime:
+    type: sync
+    module: shimmy_cloud_agents.tools.datetime_tool
+    args: [timezone_str]
+    params:
+      returns: dict
+  get_current_datetime_tool:
+    type: async
+    module: shimmy_cloud_agents.agents.stt_subscriber.agent
+    args: [timezone_str]
+    params:
+      returns: str
+  get_power_status_tool:
+    type: async
+    module: shimmy_cloud_agents.tools.robot_commands
+    args: [tool_context]
+    params:
+      returns: str
+  move_shimmy_tool:
+    type: async
+    module: shimmy_cloud_agents.tools.robot_commands
+    args: [target_linear_distance_meters, target_angular_degrees, tool_context]
+    params:
+      returns: str
+  perform_search_via_agent_tool:
+    type: async
+    module: shimmy_cloud_agents.agents.stt_subscriber.agent
+    args: [search_query, tool_context]
+    params:
+      returns: str
+  process_audio_and_respond:
+    type: async
+    module: shimmy_cloud_agents.server
+    args: [audio_data, session_id, robot_id, is_http_test]
+    params:
+      returns: Optional[str]
+  read_root:
+    type: async
+    module: shimmy_cloud_agents.server
+  set_led_tool:
+    type: async
+    module: shimmy_cloud_agents.tools.robot_commands
+    args: [color_hex, brightness, pattern, turn_off, tool_context]
+    params:
+      returns: str
+  set_voice_volume_tool:
+    type: async
+    module: shimmy_cloud_agents.tools.robot_commands
+    args: [volume_level, tool_context]
+    params:
+      returns: str
+  shutdown_event:
+    type: async
+    module: shimmy_cloud_agents.server
+  startup_event:
+    type: async
+    module: shimmy_cloud_agents.server
+  test_agent_endpoint:
+    type: async
+    module: shimmy_cloud_agents.server
+    args: [request]
+  turn_shimmy_tool:
+    type: async
+    module: shimmy_cloud_agents.tools.robot_commands
+    args: [target_angular_degrees, tool_context]
+    params:
+      returns: str
+
+variables:
+  DATETIME_AGENT_MODEL:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_path]
+  GRPC_SERVER_HOST:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_path]
+  GRPC_SERVER_PORT:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_path]
+  LOG_LEVEL:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_path]
+  ROOT_AGENT_MODEL:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_path]
+  SPEECH_PROCESSOR_MODEL:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_path]
